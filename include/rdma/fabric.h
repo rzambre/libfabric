@@ -87,6 +87,9 @@ enum {
 
 uint32_t fi_version(void);
 
+extern int benchmark_flag;
+extern double total_epoll_time;
+
 struct fid;
 struct fid_fabric;
 struct fid_domain;

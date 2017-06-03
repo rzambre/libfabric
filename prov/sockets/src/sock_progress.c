@@ -56,6 +56,8 @@
 #include <arpa/inet.h>
 #include <net/if.h>
 
+#include <rdma/fabric.h>
+
 #include <fi_mem.h>
 #include "sock.h"
 #include "sock_util.h"
@@ -67,6 +69,9 @@
 #define SOCK_GET_RX_ID(_addr, _bits) (((_bits) == 0) ? 0 : \
 		(((uint64_t)_addr) >> (64 - _bits)))
 
+struct timespec start, end;
+int benchmark_flag = 0;
+double total_epoll_time = 0;
 
 static int sock_pe_progress_buffered_rx(struct sock_rx_ctx *rx_ctx);
 
@@ -2645,6 +2650,16 @@ void sock_pe_remove_rx_ctx(struct sock_rx_ctx *rx_ctx)
 	pthread_mutex_unlock(&rx_ctx->domain->pe->list_lock);
 }
 
+static double get_elapsed(struct timespec *start, const struct timespec *end)
+{
+	double elapsed;
+
+	elapsed = difftime(end->tv_sec, start->tv_sec) * 1000 * 1000 * 1000;
+	elapsed += end->tv_nsec - start->tv_nsec;
+
+	return elapsed;
+}
+
 static int sock_pe_progress_rx_ep(struct sock_pe *pe, struct sock_ep_attr *ep_attr,
 					struct sock_rx_ctx *rx_ctx)
 {
@@ -2657,7 +2672,16 @@ static int sock_pe_progress_rx_ep(struct sock_pe *pe, struct sock_ep_attr *ep_at
         if (!map->used)
                 return 0;
 
-        num_fds = sock_epoll_wait(&map->epoll_set, 0);
+        if (benchmark_flag) {
+		clock_gettime(CLOCK_MONOTONIC, &start);
+		num_fds = sock_epoll_wait(&map->epoll_set, 0);
+		clock_gettime(CLOCK_MONOTONIC, &end);
+		
+		total_epoll_time += get_elapsed(&start, &end);
+
+	} else {
+		num_fds = sock_epoll_wait(&map->epoll_set, 0);
+	}
         if (num_fds < 0 || num_fds == 0) {
                 if (num_fds < 0)
                         SOCK_LOG_ERROR("poll failed: %s\n", strerror(errno));
